@@ -10,6 +10,10 @@ import pandas as pd
 import numpy as np
 from scipy.stats import norm
 from sklearn import mixture
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 
 
 #argparse
@@ -33,7 +37,8 @@ def EMCopyNumber(row):
     gmm = mixture.GaussianMixture(n_components=5)
     gmm.fit(depths)
     predictions = gmm.predict(depths)
-    print(predictions)
+    probabilities = gmm.predict_proba(depths)
+    return predictions, probabilities
 
 
 ##########################################################################################################################
@@ -46,12 +51,15 @@ for region, row in regions.iterrows():
     if region != "22_24352143_24386421":
         continue
 
-    EMCopyNumber(row)
-    #binned,centers = EMCopyNumber(row)
-#    swarm(binned, centers, args.out_dir, region)
-#    print(centers)
-#    print(region)
-#    for i in range(len(binned)):
-#        print (str(i) + ": " + str(binned.iloc[i].count()))
-#    print()
-#
+    preds, probs = EMCopyNumber(row)
+
+    print("SAMPLE", "QUAL", "CN", "DEPTH", "PROBS", sep="\t")
+    for i,pred in enumerate(preds):
+        print(row.index[i], 
+                "PASS" if (max(probs[i]) > 0.9) else "FAIL", 
+                pred, 
+                row.values[i], 
+                ",".join(str(x) for x in probs[i]),
+                sep="\t"
+            )
+
