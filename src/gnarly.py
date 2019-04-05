@@ -87,7 +87,7 @@ normalized_depths_matrix = depths_matrix
 normalized_depths_matrix = normalized_depths_matrix / normalized_depths_matrix.mean(axis='rows')
 #for_peter(normalized_depths_matrix)
 normalized_depths_matrix.to_csv("internal_norm_depths.csv")
-normalized_depths_matrix = normalized_depths_matrix.div(normalized_depths_matrix.mean(axis='columns'), axis='rows')
+normalized_depths_matrix = normalized_depths_matrix.div(normalized_depths_matrix.median(axis='columns'), axis='rows')
 normalized_depths_matrix.to_csv("external_norm_depths.csv")
 
 #find possible deletions and duplications

@@ -1,5 +1,8 @@
 #! /usr/bin/env python
 from __future__ import print_function
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 import sys
 import argparse
 import os
@@ -37,45 +40,57 @@ def maximization(depths, centers, centers_count):
                 closest_idx = j
         binned_dicts[closest_idx][depths.index[i]] = depths[i]
     
-    binned = []
-    for i in range(len(binned_dicts)):
-        series = pd.DataFrame.from_dict(binned_dicts[i], orient='index')
-        binned.append(series)
+    binned = pd.DataFrame(binned_dicts)
+    #binned = []
+    #for i in range(len(binned_dicts)):
+    #    #series = pd.Series(list(binned_dicts[i].values()), index=pd.MultiIndex.from_tuples(binned[i].keys()))
+    #    df = pd.DataFrame.from_dict(binned_dicts[i],orient='index')
+    #    binned.append(df)
     return binned
+
 
 #EXPECTATION
 #moves the centers to fit the depths that have been assigned, based on responsibility for those centers
 def expectation(depths, binned, centers, eps):
     #adjust CN=2 center
-    centers[2] = np.mean(binned[2].values)
-    
-    #TODO ask about this use of responsibility. What impact does using it only on CN=2 have?
-    #Notice that it is used indirectly on the others
-    if centers[2] == 0:
-        depths_count = len(depths)
-        #we exclude the top bin to avoid over-adjusting lambda[2] for extreme outliers.
-        for i in range(len(centers)-1):
-            #find depth responsibility
-            depth_responsibility = binned[i].size / depths_count
-
-            #don't let the coverage at any CN drop below some cutoff eps
-            if centers[i] < eps:
-                centers[i] = eps
-
-            #scale by depth responsibility
-            centers[2] += np.mean(binned[i].values) * (2 / i) * depth_responsibility
+    centers[2] = np.mean(binned.iloc[2].values)
     
     #adjust the expected depths of other copy-numbers based on that from CN2
     for i in range(len(centers)):
-        centers[i] = centers[2] * (i / 2)
-
-    #expand the range of CN=2
-    #this makes sense because if it's more common, there are more opportunities for spread
-    cn2_span = centers[2] - centers[1]
-    centers[1] -= (cn2_span / 1.5)
-    centers[3] += (cn2_span / 1.5)
-    
+        centers[i] = centers[2] * (i / 2.0)
     return centers
+
+#def expectation(depths, binned, centers, eps):
+#    #adjust CN=2 center
+#    centers[2] = np.mean(binned[2].values)
+#    
+#    #TODO ask about this use of responsibility. What impact does using it only on CN=2 have?
+#    #Notice that it is used indirectly on the others
+#    if centers[2] == 0:
+#        depths_count = len(depths)
+#        #we exclude the top bin to avoid over-adjusting lambda[2] for extreme outliers.
+#        for i in range(1,len(centers)-1):
+#            #find depth responsibility
+#            depth_responsibility = binned[i].size / depths_count
+#
+#            #don't let the coverage at any CN drop below some cutoff eps
+#            if centers[i] < eps:
+#                centers[i] = eps
+#
+#            #scale by depth responsibility
+#            centers[2] += np.mean(binned[i].values) * (2.0 / i) * depth_responsibility
+#    
+#    #adjust the expected depths of other copy-numbers based on that from CN2
+#    for i in range(len(centers)):
+#        centers[i] = centers[2] * (i / 2.0)
+#
+#    #expand the range of CN=2
+#    #this makes sense because if it's more common, there are more opportunities for spread
+##    cn2_span = centers[2] - centers[1]
+##    centers[1] -= (cn2_span / 1.5)
+##    centers[3] += (cn2_span / 1.5)
+#    
+#    return centers
 
 #given a list of centers and the list of previous centers, find the largest difference between them
 def getMaxChange(centers, last_centers):
@@ -92,7 +107,7 @@ def getMaxChange(centers, last_centers):
 #returns a list of integer copy-numbers corresponding to given normalized depths.
 #Uses a simple EM to assign depths to copy-number bins with a preference for CN=2.
 #Adjusts mean depth after each iteration.
-def EMCopyNumber(depths, maxiter=10, eps=0.01, centers_count=5):
+def EMCopyNumber(depths, maxiter=10, eps=0.01, centers_count=8):
     #median of the depths, assumed to be near CN=2
     median = np.median(depths)
 
@@ -112,8 +127,7 @@ def EMCopyNumber(depths, maxiter=10, eps=0.01, centers_count=5):
         if i != 2:
             #multiply the CN=2 depth by 1/2^1.1 gives a slightly scaled value near expected depth for each CN
             #if CN=2 has a depth of 1, this results in 0, 0.55, 1, 1.65, 2.2 being stored
-            centers[i] = centers[2]*((i/2)**1.1)
-    print(centers)
+            centers[i] = centers[2]*((i/2.0)**1.1)
     
     #put the depths into their bins
     binned = maximization(depths, centers, centers_count)
@@ -136,12 +150,52 @@ def EMCopyNumber(depths, maxiter=10, eps=0.01, centers_count=5):
 
         #EXPECTATION
         centers = expectation(depths, binned, centers, eps)
-        print(centers)
 
         #update the max_change for convergence testing
         max_change = getMaxChange(centers, last_centers)
     
-    return binned
+    return binned,centers
+
+#make aswarm plot to test clusters
+#def swarm(binned,centers,directory, region):
+#    os.makedirs(directory, exist_ok=True)
+#    import seaborn as sns
+#    import matplotlib.pyplot as plt
+#    sns.set(style="whitegrid")
+#    
+#    plt.figure(figsize=(12,9))
+#    for series in binned:
+#        if len(series) >0:
+#            ax = sns.swarmplot(data=series, )
+#            break
+#    for i in range(len(centers)):
+#        center = centers[i]
+#        ax.axhline(center,linestyle="--", linewidth=1)
+#        ax.annotate("CN="+str(i), xy=(0.5,center))
+#
+#    plotname = os.path.join(directory,region+".pdf")
+#    plt.ylabel("Normalized depth")
+#    plt.savefig(plotname)
+#    plt.close()
+
+
+def swarm(binned,centers,directory, region):
+    labels = ["CN="+str(x) for x in range(len(binned))]
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    sns.set(style="whitegrid")
+    plt.figure(figsize=(12,9))
+    print(binned)
+    ax = sns.swarmplot(data=binned.transpose())
+    
+    ax.set_title(region)
+    plotname = os.path.join(directory,region+".pdf")
+    plt.ylabel("Normalized depth")
+    plt.xlabel("Predicted copy number")
+    plt.savefig(plotname)
+    plt.close()
 
 ##########################################################################################################################
 
@@ -150,12 +204,14 @@ def EMCopyNumber(depths, maxiter=10, eps=0.01, centers_count=5):
 regions = pd.read_csv(args.depths_matrix, index_col=0)
 for region, row in regions.iterrows():
     region = region[2:-1]
-    if region != "1_1596470_1652900":
+    if region != "22_24352143_24386421":
         continue
-    binned = EMCopyNumber(row)
+    binned,centers = EMCopyNumber(row)
+    swarm(binned, centers, args.out_dir, region)
+    print(centers)
     print(region)
     for i in range(len(binned)):
-        if i != 2 and len(binned[i]) > 0:
-            print (str(i) + ": " + str(len(binned[i])))
-            print(binned[i])
+        print (str(i) + ": " + str(binned.iloc[i].count()))
     print()
+
+#TODO if this example is too complex, create fake date with points scattered around CN=2 and a couple of randos at other CNs

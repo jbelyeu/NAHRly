@@ -1,5 +1,8 @@
 #! /usr/bin/env python
 from __future__ import print_function
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 import sys
 import argparse
 import os
@@ -13,10 +16,10 @@ import Families
 #argparse
 ##########################################################################################################################
 parser = argparse.ArgumentParser(description="finds potential CNVs using a directory of depth bedfiles from MosDepth")
-parser.add_argument("-e", "--del_matrix",
-    help="CSV file with putative deletion regions from gnarly",
-    required=True
-)
+#parser.add_argument("-e", "--del_matrix",
+#    help="CSV file with putative deletion regions from gnarly",
+#    required=True
+#)
 parser.add_argument("-r", "--regions_matrix", 
     help="CSV file with regions from gnarly",
     required=True
@@ -130,6 +133,7 @@ def summarize_region(df, region_zscores, families):
 
 def swarm_z(df,zscores,directory, region_of_interest=False):
     os.makedirs(directory, exist_ok=True)
+    print(directory)
     location = "/uufs/chpc.utah.edu/common/home/u1072557/nahr/nahr_cn/temp_data/"
     import seaborn as sns
     sns.set(style="whitegrid")
@@ -184,5 +188,5 @@ for fam in families:
 
 #swarmplot z colored by family
 #swarm_z(possible_del_regions, zscores, os.path.join(args.out_dir,"swarm", "del"))
-swarm_z(regions, zscores, os.path.join(args.out_dir,"swarm"))
+swarm_z(regions, zscores, os.path.join(args.out_dir,"swarm"), "22_24352143_24386421")
 #swarm_z(low_depth_regions, zscores, os.path.join(args.out_dir,"swarm", "low_depth"))
