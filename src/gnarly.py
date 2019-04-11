@@ -81,6 +81,7 @@ depths_matrix = pd.DataFrame(data,index=regions,columns=samples)
 
 #remove regions where all the sample depth is zero
 depths_matrix = depths_matrix.loc[(depths_matrix > 0).any(axis='columns')]
+depths_matrix.to_csv("depths.csv")
 
 #normalize internally (output for peter), externally
 normalized_depths_matrix = depths_matrix

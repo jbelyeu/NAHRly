@@ -8,6 +8,10 @@ import argparse
 import os
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 #argparse
 ##########################################################################################################################
@@ -183,8 +187,6 @@ def swarm(binned,centers,directory, region):
     labels = ["CN="+str(x) for x in range(len(binned))]
     if not os.path.exists(directory):
         os.makedirs(directory)
-    import seaborn as sns
-    import matplotlib.pyplot as plt
     sns.set(style="whitegrid")
     plt.figure(figsize=(12,9))
     print(binned)
