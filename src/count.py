@@ -42,42 +42,67 @@ args = parser.parse_args()
 #####################################################################################################################
 #functions and generators
 ######################################################################################################################
-#this must be global for function access
-regions = []
-with open(args.bed, 'r') as regions_file:
-    for line in regions_file:
-        regions.append(line.split()[:3])
 
-def count_sample(cram):
-    sample = os.path.split(os.path.splitext(cram)[0])[-1]
-    region_counts = []
-    for region in regions:
+def count_sample(counting_arg):
+    try:
+        cram = counting_arg['cram']
+        regions = counting_arg['regions']
+        regions_dict = counting_arg['regions_dict']
+        sample = os.path.split(os.path.splitext(cram)[0])[-1]
+        region_counts = {"_".join(region): 0 for region in regions}
         samfile = pysam.AlignmentFile(cram, "rc")
-        iter = samfile.fetch(region[0], int(region[1]), int(region[2]))
-        region_counts.append(sum(1 for x in iter if x.mapping_quality > 0 ))
-    countseries_pair = sample,pd.Series(np.array(region_counts), index=["_".join(region) for region in regions])
-    return countseries_pair
+
+
+        for read in samfile:
+            if read.is_qcfail or read.is_duplicate or int(read.mapping_quality) <= 0: continue
+            chrom = read.reference_name
+            
+            if chrom in regions_dict:
+                pos = min(int(read.reference_start),int(read.reference_end))
+                end = max(int(read.reference_start),int(read.reference_end))
+
+                for region_pos, region_end in regions_dict[chrom]:
+                    #if the region encompasses any part of the read
+                    if (int(region_pos) <= pos <= int(region_end)) or (int(region_pos) <= end <= int(region_end)):
+                        region = "_".join([chrom,region_pos,region_end])
+                        region_counts[region] += 1
+                        
+        countseries_pair = [sample,pd.Series(region_counts)]
+        return countseries_pair
+    except KeyboardInterrupt, e:
+        pass
     
 ######################################################################################################################
 
 #main block
 ######################################################################################################################
-original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-pool=Pool(processes=args.process_count)
-signal.signal(signal.SIGINT, original_sigint_handler)
-try:
-    crams = glob.glob(os.path.join(args.cram_dir,"*.cram"))
-    result = pool.map_async(count_sample, (cram for cram in crams))
-    while not result.ready():
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("Keyboard interrupt")
-    pool.terminate()
-counts = result.get()
-pool.close()
-pool.join()
+def main():
+    regions = []
+    regions_dict = {}
+    with open(args.bed, 'r') as regions_file:
+        for line in regions_file:
+            chrom,pos,end = line.strip().split()[:3]
 
-data = pd.DataFrame()
-for sample,count in counts:
-    data[sample] = count
-data.to_csv(args.count_file)
+            regions.append([chrom,pos,end])
+            if not chrom in regions_dict:
+                regions_dict[chrom] = []
+            regions_dict[chrom].append([pos,end])
+
+    crams = glob.glob(os.path.join(args.cram_dir,"*.cram"))
+    counting_args = [{"regions": regions, "regions_dict": regions_dict, "cram": cram } for cram in crams]
+    pool=Pool(processes=args.process_count)
+    process = pool.map_async(count_sample, (counting_arg for counting_arg in counting_args))
+    
+    try:
+        counts = process.get(0xFFFF)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt")
+        return
+    
+    data = pd.DataFrame()
+    for sample,count in counts:
+        data[sample] = count
+    data.to_csv(args.count_file)
+
+if __name__ == "__main__":
+    main()
