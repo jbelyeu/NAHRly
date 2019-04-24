@@ -33,14 +33,17 @@ args = parser.parse_args()
 #functions 
 ##########################################################################################################################
 def plot_histograms(row, directory, region):
-    print(region)
     if not os.path.exists(directory):
         os.makedirs(directory)
     
     ax = row.hist()
+    ax.grid(False)
+    ax.set_xlabel("Normalized Depth")
+    ax.set_ylabel("Number of Samples")
+    loc_info = region.split("_")
+    ax.set_title(loc_info[0]+":"+loc_info[1]+"-"+loc_info[2])
+    plotname = os.path.join(directory,region+"_hist.png") 
     fig = ax.get_figure()
-    plotname = os.path.join(directory,region+"hist.png") 
-    print(plotname)
     fig.savefig(plotname)
 
 ##########################################################################################################################
@@ -54,9 +57,11 @@ for region, row in regions.iterrows():
     #if region != "1_104809_573868":
     #    continue
     #if region != "22_24352143_24386421":
-    #    continue
+     #  continue
     #if region != "1_87113_398211":
     #    continue
+    if region != "1_12906129_12927940":
+        continue
 
     plot_histograms(row, args.out_dir, region)
     sys.exit()

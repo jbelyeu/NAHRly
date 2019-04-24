@@ -13,6 +13,7 @@ from sklearn import mixture
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import operator
 
 max_k = 10
 
@@ -80,27 +81,29 @@ def print_report(row, preds, probs, n_clusters):
             )
 
 def plot_report(data, n_clusters, directory, region):
-    print(84)
     if not os.path.exists(directory):
         os.makedirs(directory)
     import seaborn as sns
     import matplotlib.pyplot as plt
     sns.set(style="whitegrid")
     plt.figure(figsize=(12,9))
-    #ax = sns.swarmplot(x=data['cns'],y=data['normdepths'])
-    print(data[:10])
+
+    #ax = sns.swarmplot(y="normdepths", x=[""]*len(data), hue="preds", data=data)
     ax = sns.swarmplot(y="normdepths", x=[""]*len(data), hue="cns", data=data)
     
-
-    ax.set_title(region + ": with k=" + str(n_clusters))
-    plotname = os.path.join(directory,region+"_"+str(n_clusters)+"_skl.pdf")
+    
+    loc_info = region.split("_")
+    ax.set_title(loc_info[0]+":"+loc_info[1]+"-"+loc_info[2])
+    #ax.set_title(loc_info[0]+":"+loc_info[1]+"-"+loc_info[2] + ": with k=" + str(n_clusters))
+    #plotname = os.path.join(directory,region+"_"+str(n_clusters)+"_skl.pdf")
+    plotname = os.path.join(directory,region+"_"+str(n_clusters)+"_skl.png")
     plt.ylabel("Normalized depth")
     plt.xlabel("Predicted copy number")
     plt.savefig(plotname)
     plt.close()
 
+
 def predict_cn(data, region):
-    print(103)
     #data is a dataframe of normalized depth (normdepths), prediction groups (preds), and sample labels (index) for a single region
     #I want to modify it to add a new column with predicted copy number based on the information already in the dataframe
     #to do this, I'll find the largest group and set it as CN=2, then guess the others based on that
@@ -132,18 +135,23 @@ def predict_cn(data, region):
         pred_depths.append(medians[largest_median_idx] * (i/max_cn))
     
     copy_numbers = {}
+    # loop through the predicted possible copy numbers to find the closest cluster median
     for cn,pred_depth in enumerate(pred_depths):
         min_dist = np.inf
         depth_bestmatch_idx = -1
-
+        
+        # loop through the medians, find smallest distance to a predicted depth's median
         for i,median in enumerate(medians):
             if abs(median-pred_depth) < min_dist:
                 min_dist = abs(median-pred_depth)
                 depth_bestmatch_idx = i
+        
+        # if the closest depth to the median is not in the copynumbers list, add it
         if depth_bestmatch_idx not in copy_numbers:
             copy_numbers[depth_bestmatch_idx] = cn,min_dist
         else:
             old_cn,old_min_dist = copy_numbers[depth_bestmatch_idx]
+            # TODO fix this. Currently it overwrites if a depth median is closer to the copy number but does nothing with the other cn
             if  min_dist < old_min_dist:
                 copy_numbers[depth_bestmatch_idx] = cn,min_dist
     
@@ -155,6 +163,47 @@ def predict_cn(data, region):
     data['cns'] = data['preds'].map(copy_numbers)
     return data
 
+
+
+def simply_predict_cn(data, region):
+    medians = data.groupby("preds")["normdepths"].median()
+    cluster_medians = []
+    for i,median in enumerate(medians):
+        cluster_medians.append([i,median])
+
+    #this sort naively solves the problem
+    #copy number is assigned to each cluster based on smallest to largest median value
+    cluster_medians.sort(key=operator.itemgetter(1))
+    copy_numbers = {}
+
+    #to be a bit smarter, we increase the copynumber guess if the distance between copoy numbers is greater than
+    #half the distance from cn=0 to cn=2, times 1.5
+    
+    if len(cluster_medians) <= 1 or True:
+        #i is the naive cn prediction, pred_num is the cluster number
+        for i,pair in enumerate(cluster_medians):
+            pred_num,median = pair
+            copy_numbers[pred_num] = i
+    else:
+        dist_between_cns = -1
+
+        if len(cluster_medians) == 2:
+            dist_between_cns = cluster_medians[1][1] - cluster_medians[0][1]
+        else:
+            dist_between_cns = 0.5*(cluster_medians[2][1] - cluster_medians[0][1])
+
+        stretched_cluster_medians = []
+        #i is the naive cn prediction, pred_num is the cluster number
+        for i,pair in enumerate(cluster_medians):
+            pred_num,median = pair
+            cn = i
+            if i > 0:
+                if median > (cluster_medians[i-1][1] + (dist_between_cns*1.5)):
+                    #this means the current cluster is far larger than it should be, so we skipped a cn between them
+                    cn += 1
+            copy_numbers[pred_num] = cn
+    data['cns'] = data['preds'].map(copy_numbers)
+    return data
 
 ##########################################################################################################################
 
@@ -169,6 +218,13 @@ for region, row in regions.iterrows():
     #    continue
     #if region != "1_87113_398211":
     #    continue
+    #if region != "1_12906129_12927940":
+    #    continue
+    # missing two clusters in plot
+    #if region != "15_45223674_45249700":
+    #    continue
+    if not region.startswith("1_"):
+        continue
 
     preds, probs, n_clusters = EMCopyNumber(row)
     data = pd.DataFrame(row)
@@ -176,5 +232,9 @@ for region, row in regions.iterrows():
     data['preds'] = preds
     
     #print_report(row, preds, probs, n_clusters)
-    predict_cn(data, region)
-    plot_report(data, n_clusters, args.out_dir, region)
+    simply_predict_cn(data, region)
+
+    region_fields = region.split("_")
+    interval_len = int(region_fields[2]) - int(region_fields[1])
+    if n_clusters > 3 and (20 < interval_len < 1000000):
+        plot_report(data, n_clusters, args.out_dir, region)
