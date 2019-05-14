@@ -15,7 +15,7 @@ header_tmpl = """##fileformat=VCFv4.2
 ##ALT=<ID=CNV,Description="Copy-number Variant">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT"""
 
-variant_tmpl = """{chrom}\t{POS}\t.\tN\t<svt>\t{qual}\tPASS\tSVTYPE={svt};END={stop};SVLEN={svlen}\tGT:GQ:CN:DP"""
+variant_tmpl = """{chrom}\t{POS}\t.\tN\t<{svt}>\t{qual}\tPASS\tSVTYPE={svt};END={stop};SVLEN={svlen}\tGT:GQ:CN:DP"""
 
 def get_writer(out_path, sample_names):
     header = header_tmpl + "\t" + "\t".join(sample_names)

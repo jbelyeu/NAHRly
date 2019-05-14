@@ -82,9 +82,10 @@ normalized_depths = normalized_depths / normalized_depths.median(axis='rows')
 normalized_depths = normalized_depths * 2
 normalized_depths.to_csv("internal_norm_depths2.csv")
 
-normalized_depths = normalized_depths[:1]
+normalized_depths = normalized_depths
 
 
+cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns)
 for region, row in normalized_depths.iterrows():
     chrom,start,stop = region.split("_")
     start = int(start)
@@ -93,11 +94,9 @@ for region, row in normalized_depths.iterrows():
         "chrom": chrom,
         "start": start,
         "stop": stop,
-        "DP": row.values[:2]
+        "DP": row.values
     }
 
 
     region_info = depth2CN(region_info)
-    cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns[:2])
-    print(region_info)
     vcfwriter.write_variant(cy_writer, region_info)
