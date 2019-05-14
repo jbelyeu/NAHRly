@@ -14,11 +14,13 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
+import vcfwriter
 
 #arg parsing
 ######################################################################################################################
 parser = argparse.ArgumentParser(description="finds potential CNVs using a directory of depth bedfiles from MosDepth")
 parser.add_argument("bed_dir")
+parser.add_argument("-v", "--vcf", help="filename for the ouput in VCF format", required=True)
 args = parser.parse_args()
 #####################################################################################################################
 
@@ -37,7 +39,7 @@ def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
 def depth2CN(region_info):
-    region_info["CN"] = np.full(region_info["depth"].shape, 2, dtype=int)
+    region_info["CN"] = np.full(region_info["DP"].shape, 2, dtype=int)
     return region_info
 
 ######################################################################################################################
@@ -80,7 +82,9 @@ normalized_depths = normalized_depths / normalized_depths.median(axis='rows')
 normalized_depths = normalized_depths * 2
 normalized_depths.to_csv("internal_norm_depths2.csv")
 
-#
+normalized_depths = normalized_depths[:1]
+
+
 for region, row in normalized_depths.iterrows():
     chrom,start,stop = region.split("_")
     start = int(start)
@@ -89,8 +93,11 @@ for region, row in normalized_depths.iterrows():
         "chrom": chrom,
         "start": start,
         "stop": stop,
-        "depth": row.values
+        "DP": row.values[:2]
     }
 
 
     region_info = depth2CN(region_info)
+    cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns[:2])
+    print(region_info)
+    vcfwriter.write_variant(cy_writer, region_info)
