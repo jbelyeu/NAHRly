@@ -36,8 +36,8 @@ def generate_sample_fields(variant_dict, svt):
     for i in range(len(variant_dict["CN"])):
         cn = variant_dict["CN"][i]
         gt = [get_gt(svt, cn)]
-        gt.append(str(cn))
         gt.append(str(get_gq()))
+        gt.append(str(cn))
         gt.append("%.3f" % variant_dict["DP"][i])
         result.append(":".join(gt))
     return result

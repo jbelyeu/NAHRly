@@ -39,7 +39,9 @@ def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
 def depth2CN(region_info):
-    region_info["CN"] = np.full(region_info["DP"].shape, 2, dtype=int)
+    region_info["CN"] = np.round(region_info['DP']).astype(int)
+
+
     return region_info
 
 ######################################################################################################################
