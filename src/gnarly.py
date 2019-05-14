@@ -64,12 +64,20 @@ samples = [ext_sname(x) for x in bedfiles]
 
 regions_bed = bedfiles[0]
 regions = []
-with gz.open(regions_bed, 'r') as regions_file:
-    for i, line in enumerate(regions_file):
-        if sys.version_info[0] < 3:
-            regions.append("_".join(line.split()[:3]))
-        else:
-            regions.append(str(b"_".join(line.split()[:3])))
+with gz.open(regions_bed, 'rt') as regions_file:
+    for line in regions_file:
+        #this shouldn't be necessary, but for now the region pairs suck
+        start = int(line.strip().split()[1])
+        end = int(line.strip().split()[2])
+        length = end-start
+        if length < 0:
+            temp = start
+            start = end
+            end = temp
+        length = end-start
+        if length >= 50:
+            regions.append(str("_".join(line.split()[:3])))
+
 data = []
 #use generators to read one depth from each file at a time
 readers = [readFile(bed) for bed in bedfiles]
