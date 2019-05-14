@@ -39,9 +39,25 @@ def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
 def depth2CN(region_info):
-    region_info["CN"] = np.round(region_info['DP']).astype(int)
+    odp = np.asarray(region_info['DP']) / 2.0
 
+    min_diff = sys.maxsize
+    min_cn = -1
+    for putative_median_cn in (1, 2, 3, 4):
+        dp = odp / max(1, np.median(odp)) * putative_median_cn
 
+        cn = np.round(dp).astype(int)
+        sq_diff = np.sqrt(np.abs(dp - cn)).sum()
+        if sq_diff < min_diff:
+            min_diff = sq_diff
+            min_cn = putative_median_cn
+            region_info["CN"] = cn
+
+    #print("################")
+    #print(min_cn)
+    #print(region_info["CN"])
+    #print(odp)
+    #1/0
     return region_info
 
 ######################################################################################################################
@@ -98,7 +114,6 @@ for region, row in normalized_depths.iterrows():
         "stop": stop,
         "DP": row.values
     }
-
 
     region_info = depth2CN(region_info)
     vcfwriter.write_variant(cy_writer, region_info)
