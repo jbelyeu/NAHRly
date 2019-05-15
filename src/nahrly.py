@@ -53,23 +53,43 @@ def depth2CN(region_info, plot=False):
         v = tmp[len(tmp)//2]
         imed = np.where(np.abs(ndps - v) < 1e-7)[0][0]
 
+    # NOTE that we could experiment with larger bins at the extremes to catch
+    # rare events. or handle that post-hocl
     bins = np.zeros(100)
+    large_scaler = 22.0
 
     n_samples = len(ndps)
-    scale_depth = np.minimum(bins.size - 1, np.round(ndps * (24 if n_samples > 72 else 12)).astype(int))
+    scale_depth = np.minimum(bins.size - 1, np.round(ndps * (large_scaler if n_samples > 72 else 12)).astype(int))
 
     bins = np.bincount(scale_depth)
-    peaks, props = find_peaks(bins, distance=6, prominence=3)
-    unscaled = peaks / (24.0 if n_samples > 72 else 12.0)
-    if len(unscaled) == 0:
-        unscaled = np.array([ndps[imed]])
+    # TODO: prominence of 3 means 3 samples must be in same bin, so won't find
+    # de novos. figure how to deal with that post-hoc?
+    peaks, _ = find_peaks(bins, distance=6, prominence=3, rel_height=0.7)
+    upeaks = peaks / (large_scaler if n_samples > 72 else 12.0)
+    if len(upeaks) == 0:
+        upeaks = np.array([ndps[imed]])
+        peaks = np.array([2])
 
-    # TODO: this is just using naive distance (and finding closest peak)
-    # we really want to split copy-numbers at the troughs. I think we can do
-    # this by using find_peaks(-bins) or probably better, just scan for lowest point between 2 peaks
-    # and use that to split!!! This is critical for accuracy of CN.
-    # This is obvious from the plots
-    cns = distance_matrix(ndps.reshape((ndps.shape[0], 1)), unscaled.reshape((unscaled.shape[0], 1))).argmin(axis=1)
+    # split bins at the troughs (lowest point between 2 peaks)
+    troughs = []
+    for start, stop in zip(peaks, peaks[1:]):
+        troughs.append(start + np.argmin(bins[start:stop]))
+    troughs.append(len(bins))
+
+    utroughs = np.array(troughs) / (large_scaler if n_samples > 72 else 12)
+
+
+    cns = np.zeros(dps.shape[0], dtype=int)
+
+    # this was just using naive distance (and finding closest peak)
+    # cns = distance_matrix(ndps.reshape((ndps.shape[0], 1)), upeaks.reshape((upeaks.shape[0], 1))).argmin(axis=1)
+    # the code blow splits by trough instead.
+
+    for i, p in enumerate(upeaks):
+        if i == 0:
+            cns[ndps <= utroughs[0]] = i
+        else:
+            cns[(ndps >= utroughs[i-1]) & (ndps <= utroughs[i])] = i
 
     # re-scale so that CN2 is the value assigned to the median sample.
     cns += (2 - cns[imed])
@@ -77,17 +97,19 @@ def depth2CN(region_info, plot=False):
     region_info["CN"] = cns
 
     if plot is False: return region_info
+    troughs = troughs[:-1]
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 8))
     axes[0].plot(bins)
     colors = sns.color_palette()
     axes[0].plot(peaks, bins[peaks], "x", color=colors[5])
+    axes[0].plot(troughs, bins[troughs], "x", color=colors[4])
 
-    for u in unscaled:
+    for u in upeaks:
         axes[1].axvline(u, color=colors[5])
 
     df = pd.DataFrame({"dp":ndps, "cn": cns})
-    cs = np.array([colors[d] for d in cns])
+    cs = np.array([colors[min(len(colors)-1, d)] for d in cns])
     cs = cs[np.argsort(dps)]
 
     ax = sns.swarmplot(x="dp", data=df, ax=axes[1])
