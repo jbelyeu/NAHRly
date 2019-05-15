@@ -4,7 +4,7 @@ import numpy as np
 header_tmpl = """##fileformat=VCFv4.2
 ##FILTER=<ID=PASS,Description="All filters passed">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-##FORMAT=<ID=CN,Number=1,Type=String,Description="integer copy-number">
+##FORMAT=<ID=CN,Number=1,Type=Integer,Description="integer copy-number">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="integer genotype quality">
 ##FORMAT=<ID=DP,Number=1,Type=Float,Description="normalized depth">
 ##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
@@ -12,13 +12,18 @@ header_tmpl = """##fileformat=VCFv4.2
 ##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">
 ##ALT=<ID=DEL,Description="Deletion">
 ##ALT=<ID=DUP,Description="Duplication">
-##ALT=<ID=CNV,Description="Copy-number Variant">
+##ALT=<ID=CNV,Description="Copy-number Variant">{contigs}
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT"""
 
 variant_tmpl = """{chrom}\t{POS}\t.\tN\t<{svt}>\t{qual}\tPASS\tSVTYPE={svt};END={stop};SVLEN={svlen}\tGT:GQ:CN:DP"""
 
-def get_writer(out_path, sample_names):
+def get_writer(out_path, sample_names, chroms=None):
+    if chroms is not None:
+        contigs = "\n" + "\n".join("##contig=<ID=%s>" % c for c in chroms)
+    else:
+        contigs = ""
     header = header_tmpl + "\t" + "\t".join(sample_names)
+    header = header.format(contigs=contigs)
     return cyvcf2.Writer.from_string(out_path, header)
 
 def get_gt(svt, cn):
