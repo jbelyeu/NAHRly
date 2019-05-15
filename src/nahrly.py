@@ -100,6 +100,7 @@ def depth2CN(region_info, plot=False):
     troughs = troughs[:-1]
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 8))
+    fig.suptitle(region_info["name"])
     axes[0].plot(bins)
     colors = sns.color_palette()
     axes[0].plot(peaks, bins[peaks], "x", color=colors[5])
@@ -163,7 +164,6 @@ normalized_depths = depths_matrix
 normalized_depths = normalized_depths / normalized_depths.median(axis='rows') * 2
 normalized_depths.to_csv("internal_norm_depths2.csv")
 
-normalized_depths = normalized_depths
 
 cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns)
 for region, row in normalized_depths.iterrows():
@@ -174,7 +174,8 @@ for region, row in normalized_depths.iterrows():
         "chrom": chrom,
         "start": start,
         "stop": stop,
-        "DP": row.values
+        "DP": row.values,
+        "name": region
     }
 
     region_info = depth2CN(region_info, plot=True)
