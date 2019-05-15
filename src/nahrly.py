@@ -10,11 +10,16 @@ import os
 import glob
 import gzip as gz
 from scipy.stats import zscore
-import matplotlib
-matplotlib.use('agg')
+#import matplotlib
+#matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import vcfwriter
+
+from scipy.spatial import distance_matrix
+from scipy.signal import find_peaks, find_peaks_cwt
+import seaborn as sns
+
 
 #arg parsing
 ######################################################################################################################
@@ -38,27 +43,64 @@ def readFile(bedfile):
 def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
-def depth2CN(region_info):
-    odp = np.asarray(region_info['DP']) / 2.0
+def depth2CN(region_info, plot=False):
+    dps = region_info["DP"]
+    ndps = 2 * dps / np.maximum(1.0, np.median(dps))
+    try:
+        imed = np.where(ndps == np.median(ndps))[0][0]
+    except IndexError:
+        tmp = np.sort(ndps)
+        v = tmp[len(tmp)//2]
+        imed = np.where(np.abs(ndps - v) < 1e-7)[0][0]
 
-    min_diff = sys.maxsize
-    min_cn = -1
-    for putative_median_cn in (1, 2, 3, 4):
-        dp = odp / max(1, np.median(odp)) * putative_median_cn
+    bins = np.zeros(100)
 
-        cn = np.round(dp).astype(int)
-        sq_diff = np.sqrt(np.abs(dp - cn)).sum()
-        if sq_diff < min_diff:
-            min_diff = sq_diff
-            min_cn = putative_median_cn
-            region_info["CN"] = cn
+    n_samples = len(ndps)
+    scale_depth = np.minimum(bins.size - 1, np.round(ndps * (24 if n_samples > 72 else 12)).astype(int))
 
-    #print("################")
-    #print(min_cn)
-    #print(region_info["CN"])
-    #print(odp)
-    #1/0
+    bins = np.bincount(scale_depth)
+    peaks, props = find_peaks(bins, distance=6, prominence=3)
+    unscaled = peaks / (24.0 if n_samples > 72 else 12.0)
+    if len(unscaled) == 0:
+        unscaled = np.array([ndps[imed]])
+
+    # TODO: this is just using naive distance (and finding closest peak)
+    # we really want to split copy-numbers at the troughs. I think we can do
+    # this by using find_peaks(-bins) or probably better, just scan for lowest point between 2 peaks
+    # and use that to split!!! This is critical for accuracy of CN.
+    # This is obvious from the plots
+    cns = distance_matrix(ndps.reshape((ndps.shape[0], 1)), unscaled.reshape((unscaled.shape[0], 1))).argmin(axis=1)
+
+    # re-scale so that CN2 is the value assigned to the median sample.
+    cns += (2 - cns[imed])
+    cns = np.maximum(0, cns)
+    region_info["CN"] = cns
+
+    if plot is False: return region_info
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 8))
+    axes[0].plot(bins)
+    colors = sns.color_palette()
+    axes[0].plot(peaks, bins[peaks], "x", color=colors[5])
+
+    for u in unscaled:
+        axes[1].axvline(u, color=colors[5])
+
+    df = pd.DataFrame({"dp":ndps, "cn": cns})
+    cs = np.array([colors[d] for d in cns])
+    cs = cs[np.argsort(dps)]
+
+    ax = sns.swarmplot(x="dp", data=df, ax=axes[1])
+    # need to do this since seaborn doesn't let us use a hue without a y.
+    ax.collections[0].set_facecolor(cs)
+
+    if plot is None or plot is True:
+        plt.show()
+    else:
+        plt.savefig(plot)
+
     return region_info
+
 
 ######################################################################################################################
 
@@ -96,12 +138,10 @@ depths_matrix = depths_matrix.loc[(depths_matrix > 0).any(axis='columns')]
 
 #normalize internally by median * 2 (assuming most common value is CN=2)
 normalized_depths = depths_matrix
-normalized_depths = normalized_depths / normalized_depths.median(axis='rows')
-normalized_depths = normalized_depths * 2
+normalized_depths = normalized_depths / normalized_depths.median(axis='rows') * 2
 normalized_depths.to_csv("internal_norm_depths2.csv")
 
 normalized_depths = normalized_depths
-
 
 cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns)
 for region, row in normalized_depths.iterrows():
@@ -115,5 +155,5 @@ for region, row in normalized_depths.iterrows():
         "DP": row.values
     }
 
-    region_info = depth2CN(region_info)
+    region_info = depth2CN(region_info, plot=True)
     vcfwriter.write_variant(cy_writer, region_info)
