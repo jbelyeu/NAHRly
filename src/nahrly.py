@@ -73,7 +73,12 @@ def depth2CN(region_info, plot=False):
     # split bins at the troughs (lowest point between 2 peaks)
     troughs = []
     for start, stop in zip(peaks, peaks[1:]):
-        troughs.append(start + np.argmin(bins[start:stop]))
+        # in case of tie, take mean, this splits in a saner place when there is
+        # for example a long stretch of 0's with intermittent 1's .
+        m = bins[start:stop]
+        min_mean, = np.where(m == m.min())
+        min_mean = int(0.5 + min_mean.mean())
+        troughs.append(start + min_mean) #np.argmin(bins[start:stop]))
     troughs.append(len(bins))
 
     utroughs = np.array(troughs) / (large_scaler if n_samples > 72 else 12)
@@ -163,7 +168,6 @@ depths_matrix = depths_matrix.loc[(depths_matrix > 0).any(axis='columns')]
 normalized_depths = depths_matrix
 normalized_depths = normalized_depths / normalized_depths.median(axis='rows') * 2
 normalized_depths.to_csv("internal_norm_depths2.csv")
-
 
 cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns)
 for region, row in normalized_depths.iterrows():
