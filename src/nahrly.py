@@ -44,28 +44,20 @@ def readFile(bedfile):
 def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
-def index_all(li, val):
-    return [i for i,item in enumerate(li) if val == item]
-
-
 def refine_cn(region_info):
-    #step 1: move CN=1 samples that have been misclassified to CN=0 
-    cn0_idxs = index_all(region_info["CN"], 0)
-    if len(cn0_idxs) > 0:
-        #if a depth that's been assigned to CN=0 has a depth above 0.4, move it to CN=1
-        for idx in cn0_idxs:
-            if region_info["DP"][idx] >= 0.4:
-                region_info["CN"][idx] = 1
+    #step 1. move CN=1 samples that have been misclassified to CN=0 
+    cn = region_info["CN"]
+    cn[(cn == 0) & (region_info["DP"] > 0.4)] = 1
 
     #step 2: if there's only one CN called, use z-scores to move outliers by one
     if len(set(region_info['CN'])) == 1:
         zscores = zscore(region_info['DP'])
+        cn[zscores > 4] += 1
+        cn[zscores < -4] -= 1
 
-        for i,z in enumerate(zscores):
-            if z < -4.0:
-                region_info['CN'][i] -= 1
-            elif z > 4.0:
-                region_info['CN'][i] += 1
+    return region_info
+    # NOTE: returning early because step 3 makes evaluation much worse.
+
 
     #step 3: if two consecutive peaks don't have different means, merge them
     cluster_depths = []
@@ -97,10 +89,8 @@ def refine_cn(region_info):
         for i in range(len(region_info['CN'])):
             if region_info['CN'][i] == mergeable_cn[1]:
                 region_info['CN'][i] = mergeable_cn[0]
-       
     return region_info
-
-
+       
 def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
     troughs = troughs[:-1]
 
@@ -122,9 +112,9 @@ def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
     plt.show()
  
 
-def depth2CN(region_info, plot=False):
+def depth2CN(region_info, plot=True):
     dps = region_info["DP"]
-    ndps = 2 * dps / np.maximum(1.0, np.median(dps))
+    ndps = 2 * dps / np.maximum(0.4, np.median(dps))
     try:
         imed = np.where(ndps == np.median(ndps))[0][0]
     except IndexError:
@@ -230,7 +220,7 @@ chroms = sorted(set(x.split("_")[0] for x in normalized_depths.index))
 
 cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns, chroms)
 for region, row in normalized_depths.iterrows():
-    if region != "1_143009_317718": continue #test case for merging
+    #if region != "1_143009_317718": continue #test case for merging
     #if region != "1_267706_341907": continue #test case for zscore splitting
 
     chrom,start,stop = region.split("_")
