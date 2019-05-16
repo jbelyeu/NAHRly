@@ -44,16 +44,39 @@ def readFile(bedfile):
 def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
-def refine_cn(region_info):
+def refine_cn(region_info, peaks, troughs):
     #step 1. move CN=1 samples that have been misclassified to CN=0 
     cn = region_info["CN"]
     cn[(cn == 0) & (region_info["DP"] > 0.4)] = 1
 
-    #step 2: if there's only one CN called, use z-scores to move outliers by one
+    #step 2.1: if there's only one CN called, use z-scores to move outliers by one
     if len(set(region_info['CN'])) == 1:
         zscores = zscore(region_info['DP'])
         cn[zscores > 4] += 1
         cn[zscores < -4] -= 1
+
+        #step 2.2: using the new groups from 2.1, check each of the values from the next group for better fit 
+        found_cns = np.unique(cn)
+        for i in range(len(found_cns)-1):
+            group1 = region_info['DP'][cn == found_cns[i]]
+            group2 = region_info['DP'][cn == found_cns[i+1]]
+            gp1_mean,gp1_std = np.mean(group1),np.std(group1)
+            gp2_mean,gp2_std = np.mean(group2),np.std(group2)
+
+            zscores_gp1 = []
+            zscores_gp2 = []
+            for j,dp in enumerate(region_info['DP']):
+                if cn[j] == found_cns[i+1]:
+                    zscores_gp1.append((dp-gp1_mean) / gp1_std)
+                    zscores_gp2.append((dp-gp2_mean) / gp2_std)
+
+                else:
+                    zscores_gp1.append(np.inf)
+                    zscores_gp2.append(np.inf)
+            zscores_gp1 = np.array(zscores_gp1)
+            zscores_gp2 = np.array(zscores_gp2)
+            
+            cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
 
     return region_info
     # NOTE: returning early because step 3 makes evaluation much worse.
@@ -74,10 +97,14 @@ def refine_cn(region_info):
         
         idxs = (i,i+1) if len(cluster_depths[i]) > len(cluster_depths[i+1]) else (i+1,i)
 
-        large_group = np.array(cluster_depths[idxs[0]])
         small_group = np.array(cluster_depths[idxs[1]])
+        large_group = np.array(cluster_depths[idxs[0]] + cluster_depths[idxs[1]])
+        lg_mean = np.mean(large_group)
+        lg_std = np.std(large_group)
 
-        zscores = np.array([((x - np.mean(large_group)) / np.std(large_group)) for x in small_group ])
+        #zscores = np.array([((x - np.mean(large_group)) / np.std(large_group)) for x in small_group ])
+
+        zscores = np.array([((x - lg_mean) / lg_std) for x in small_group ])
         
         #if the median zscore is less than X from 0, these should be merged
         if np.absolute(np.median(zscores)) < 3.0:
@@ -169,9 +196,13 @@ def depth2CN(region_info, plot=True):
     cns += (2 - cns[imed])
     cns = np.maximum(0, cns)
     region_info["CN"] = cns
+    region_info["NDPS"] = ndps
+    raw_cns = list(cns)
+    region_info = refine_cn(region_info, peaks,troughs)
 
-    region_info = refine_cn(region_info)
+
     if plot:
+        plot_cns(region_info["name"],troughs,peaks,bins,upeaks,raw_cns,dps,ndps)
         plot_cns(region_info["name"],troughs,peaks,bins,upeaks,region_info['CN'],dps,ndps)
     
     return region_info
@@ -222,6 +253,7 @@ cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns, chroms)
 for region, row in normalized_depths.iterrows():
     #if region != "1_143009_317718": continue #test case for merging
     #if region != "1_267706_341907": continue #test case for zscore splitting
+    if region != "1_251124_404048": continue #test case for merging
 
     chrom,start,stop = region.split("_")
     start = int(start)
@@ -234,5 +266,5 @@ for region, row in normalized_depths.iterrows():
         "name": region
     }
 
-    region_info = depth2CN(region_info, plot=False)
+    region_info = depth2CN(region_info, plot=True)
     vcfwriter.write_variant(cy_writer, region_info)
