@@ -10,6 +10,7 @@ import os
 import glob
 import gzip as gz
 from scipy.stats import zscore
+from scipy.stats import ttest_ind as ttest
 #import matplotlib
 #matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -43,6 +44,84 @@ def readFile(bedfile):
 def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
+def index_all(li, val):
+    return [i for i,item in enumerate(li) if val == item]
+
+
+def refine_cn(region_info):
+    #step 1: move CN=1 samples that have been misclassified to CN=0 
+    cn0_idxs = index_all(region_info["CN"], 0)
+    if len(cn0_idxs) > 0:
+        #if a depth that's been assigned to CN=0 has a depth above 0.4, move it to CN=1
+        for idx in cn0_idxs:
+            if region_info["DP"][idx] >= 0.4:
+                region_info["CN"][idx] = 1
+
+    #step 2: if there's only one CN called, use z-scores to move outliers by one
+    if len(set(region_info['CN'])) == 1:
+        zscores = zscore(region_info['DP'])
+
+        for i,z in enumerate(zscores):
+            if z < -4.0:
+                region_info['CN'][i] -= 1
+            elif z > 4.0:
+                region_info['CN'][i] += 1
+
+    #step 3: if two consecutive peaks don't have different means, merge them
+    cluster_depths = []
+    mergeable_cns = []
+    for i,cn in enumerate(region_info['CN']):
+        for _ in range(len(cluster_depths),cn+1):
+            cluster_depths.append([])
+        cluster_depths[cn].append(region_info['DP'][i])
+
+    mergeable_cns = []
+    for i in range(len(cluster_depths)-1):
+        if len(cluster_depths[i]) == 0 or len(cluster_depths[i+1]) == 0:
+            continue
+        
+        idxs = (i,i+1) if len(cluster_depths[i]) > len(cluster_depths[i+1]) else (i+1,i)
+
+        large_group = np.array(cluster_depths[idxs[0]])
+        small_group = np.array(cluster_depths[idxs[1]])
+
+        zscores = np.array([((x - np.mean(large_group)) / np.std(large_group)) for x in small_group ])
+        
+        #if the median zscore is less than X from 0, these should be merged
+        if np.absolute(np.median(zscores)) < 3.0:
+            mergeable_cns.append(idxs)
+    
+    #merge 'em    
+    mergeable_cns = sorted(mergeable_cns, reverse=True) 
+    for mergeable_cn in mergeable_cns:
+        for i in range(len(region_info['CN'])):
+            if region_info['CN'][i] == mergeable_cn[1]:
+                region_info['CN'][i] = mergeable_cn[0]
+       
+    return region_info
+
+
+def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
+    troughs = troughs[:-1]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 8))
+    fig.suptitle(name)
+    axes[0].plot(bins)
+    colors = sns.color_palette()
+    axes[0].plot(peaks, bins[peaks], "x", color=colors[5])
+    axes[0].plot(troughs, bins[troughs], "x", color=colors[4])
+
+    for u in upeaks:
+        axes[1].axvline(u, color=colors[5])
+
+    df = pd.DataFrame({"dp":ndps, "cn": cns})
+    cs = np.array([colors[min(len(colors)-1, d)] for d in cns])
+    cs = cs[np.argsort(dps)]
+
+    ax = sns.swarmplot(x="dp", y=['']*len(df), data=df, ax=axes[1], hue="cn")
+    plt.show()
+ 
+
 def depth2CN(region_info, plot=False):
     dps = region_info["DP"]
     ndps = 2 * dps / np.maximum(1.0, np.median(dps))
@@ -54,7 +133,7 @@ def depth2CN(region_info, plot=False):
         imed = np.where(np.abs(ndps - v) < 1e-7)[0][0]
 
     # NOTE that we could experiment with larger bins at the extremes to catch
-    # rare events. or handle that post-hocl
+    # rare events. or handle that post-hoc
     bins = np.zeros(100)
     large_scaler = 22.0
 
@@ -101,32 +180,10 @@ def depth2CN(region_info, plot=False):
     cns = np.maximum(0, cns)
     region_info["CN"] = cns
 
-    if plot is False: return region_info
-    troughs = troughs[:-1]
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 8))
-    fig.suptitle(region_info["name"])
-    axes[0].plot(bins)
-    colors = sns.color_palette()
-    axes[0].plot(peaks, bins[peaks], "x", color=colors[5])
-    axes[0].plot(troughs, bins[troughs], "x", color=colors[4])
-
-    for u in upeaks:
-        axes[1].axvline(u, color=colors[5])
-
-    df = pd.DataFrame({"dp":ndps, "cn": cns})
-    cs = np.array([colors[min(len(colors)-1, d)] for d in cns])
-    cs = cs[np.argsort(dps)]
-
-    ax = sns.swarmplot(x="dp", data=df, ax=axes[1])
-    # need to do this since seaborn doesn't let us use a hue without a y.
-    ax.collections[0].set_facecolor(cs)
-
-    if plot is None or plot is True:
-        plt.show()
-    else:
-        plt.savefig(plot)
-
+    region_info = refine_cn(region_info)
+    if plot:
+        plot_cns(region_info["name"],troughs,peaks,bins,upeaks,region_info['CN'],dps,ndps)
+    
     return region_info
 
 
@@ -171,6 +228,9 @@ normalized_depths.to_csv("internal_norm_depths2.csv")
 
 cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns)
 for region, row in normalized_depths.iterrows():
+    if region != "1_143009_317718": continue #test case for merging
+    #if region != "1_267706_341907": continue #test case for zscore splitting
+
     chrom,start,stop = region.split("_")
     start = int(start)
     stop = int(stop)
@@ -182,5 +242,6 @@ for region, row in normalized_depths.iterrows():
         "name": region
     }
 
+    #region_info = depth2CN(region_info)
     region_info = depth2CN(region_info, plot=True)
     vcfwriter.write_variant(cy_writer, region_info)
