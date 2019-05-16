@@ -226,7 +226,9 @@ normalized_depths = depths_matrix
 normalized_depths = normalized_depths / normalized_depths.median(axis='rows') * 2
 normalized_depths.to_csv("internal_norm_depths2.csv")
 
-cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns)
+chroms = sorted(set(x.split("_")[0] for x in normalized_depths.index))
+
+cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns, chroms)
 for region, row in normalized_depths.iterrows():
     if region != "1_143009_317718": continue #test case for merging
     #if region != "1_267706_341907": continue #test case for zscore splitting
@@ -242,6 +244,5 @@ for region, row in normalized_depths.iterrows():
         "name": region
     }
 
-    #region_info = depth2CN(region_info)
-    region_info = depth2CN(region_info, plot=True)
+    region_info = depth2CN(region_info, plot=False)
     vcfwriter.write_variant(cy_writer, region_info)
