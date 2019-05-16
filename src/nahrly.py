@@ -44,45 +44,83 @@ def readFile(bedfile):
 def ext_sname(filename):
     return os.path.basename(filename).split(".")[0]
 
-def refine_cn(region_info, peaks, troughs):
-    #step 1. move CN=1 samples that have been misclassified to CN=0 
+def one_cluster_refine(region_info):
     cn = region_info["CN"]
-    cn[(cn == 0) & (region_info["DP"] > 0.4)] = 1
+    zscores = zscore(region_info['DP'])
+    cn[zscores > 4] += 1
+    cn[zscores < -4] -= 1
 
-    #step 2.1: if there's only one CN called, use z-scores to move outliers by one
-    if len(set(region_info['CN'])) == 1:
-        zscores = zscore(region_info['DP'])
-        cn[zscores > 4] += 1
-        cn[zscores < -4] -= 1
+    #return region_info
+    #step 2.2: using the new groups from 2.1, check each of the values from the next group for better fit 
+    #do this again if any points change cn
+#    found_cns = np.unique(cn)
+#    cns_changed = True
+#    while cns_changed:
+#        cns_changed = False
+#        for i in range(len(found_cns)-1):
+#            group1 = region_info['DP'][cn == found_cns[i]]
+#            group2 = region_info['DP'][cn == found_cns[i+1]]
+#            gp1_mean,gp1_std = np.mean(group1),np.std(group1)
+#            gp2_mean,gp2_std = np.mean(group2),np.std(group2)
+#
+#            zscores_gp1 = []
+#            zscores_gp2 = []
+#            for j,dp in enumerate(region_info['DP']):
+#                if cn[j] == found_cns[i+1]:
+#                    zscores_gp1.append((dp-gp1_mean) / gp1_std)
+#                    zscores_gp2.append((dp-gp2_mean) / gp2_std)
+#
+#                else:
+#                    zscores_gp1.append(np.inf)
+#                    zscores_gp2.append(np.inf)
+#            zscores_gp1 = np.array(zscores_gp1)
+#            zscores_gp2 = np.array(zscores_gp2)
+#            
+#            cn_counts = {}
+#            for found_cn in found_cns:
+#                cn_counts[found_cn] = len(cn[cn==found_cn])
+#            cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
+#            
+#            new_found_cns = np.unique(cn)
+#            if not np.array_equal(new_found_cns, found_cns):
+#                found_cns = new_found_cns
+#                cns_changed = True
+#            else:
+#                new_cn_counts = {}
+#                for found_cn in found_cns:
+#                    new_cn_counts[found_cn] = len(cn[cn==found_cn])
+#                if new_cn_counts != cn_counts:
+#                    cns_changed = True
 
-        #step 2.2: using the new groups from 2.1, check each of the values from the next group for better fit 
-        found_cns = np.unique(cn)
-        for i in range(len(found_cns)-1):
-            group1 = region_info['DP'][cn == found_cns[i]]
-            group2 = region_info['DP'][cn == found_cns[i+1]]
-            gp1_mean,gp1_std = np.mean(group1),np.std(group1)
-            gp2_mean,gp2_std = np.mean(group2),np.std(group2)
+    found_cns = np.unique(cn)
+    for i in range(len(found_cns)-1):
+        group1 = region_info['DP'][cn == found_cns[i]]
+        group2 = region_info['DP'][cn == found_cns[i+1]]
+        gp1_mean,gp1_std = np.mean(group1),np.std(group1)
+        gp2_mean,gp2_std = np.mean(group2),np.std(group2)
 
-            zscores_gp1 = []
-            zscores_gp2 = []
-            for j,dp in enumerate(region_info['DP']):
-                if cn[j] == found_cns[i+1]:
-                    zscores_gp1.append((dp-gp1_mean) / gp1_std)
-                    zscores_gp2.append((dp-gp2_mean) / gp2_std)
+        zscores_gp1 = []
+        zscores_gp2 = []
+        for j,dp in enumerate(region_info['DP']):
+            if cn[j] == found_cns[i+1]:
+                zscores_gp1.append((dp-gp1_mean) / gp1_std)
+                zscores_gp2.append((dp-gp2_mean) / gp2_std)
 
-                else:
-                    zscores_gp1.append(np.inf)
-                    zscores_gp2.append(np.inf)
-            zscores_gp1 = np.array(zscores_gp1)
-            zscores_gp2 = np.array(zscores_gp2)
-            
-            cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
+            else:
+                zscores_gp1.append(np.inf)
+                zscores_gp2.append(np.inf)
+        zscores_gp1 = np.array(zscores_gp1)
+        zscores_gp2 = np.array(zscores_gp2)
+        
+        cn_counts = {}
+        for found_cn in found_cns:
+            cn_counts[found_cn] = len(cn[cn==found_cn])
+        cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
+
 
     return region_info
-    # NOTE: returning early because step 3 makes evaluation much worse.
 
-
-    #step 3: if two consecutive peaks don't have different means, merge them
+def multi_cluster_refine(region_info):
     cluster_depths = []
     mergeable_cns = []
     for i,cn in enumerate(region_info['CN']):
@@ -110,12 +148,33 @@ def refine_cn(region_info, peaks, troughs):
         if np.absolute(np.median(zscores)) < 3.0:
             mergeable_cns.append(idxs)
     
-    #merge 'em    
+    #merge and return
+    return merge_cns(region_info, mergeable_cns)
+
+def merge_cns(region_info, mergeable_cns):
     mergeable_cns = sorted(mergeable_cns, reverse=True) 
     for mergeable_cn in mergeable_cns:
         for i in range(len(region_info['CN'])):
             if region_info['CN'][i] == mergeable_cn[1]:
                 region_info['CN'][i] = mergeable_cn[0]
+    return region_info
+
+
+def refine_cn(region_info, peaks, troughs, bins, upeaks):
+    #step 1. move CN=1 samples that have been misclassified to CN=0 
+    cn = region_info["CN"]
+    cn[(cn == 0) & (region_info["DP"] > 0.4)] = 1
+
+    #step 2.1: if there's only one CN called, use z-scores to move outliers by one
+    if len(set(region_info['CN'])) == 1:
+        region_info = one_cluster_refine(region_info)
+
+    # NOTE: returning early because step 3 makes evaluation much worse.
+    #return region_info
+
+
+    #step 3: if two consecutive peaks don't have different means, merge them
+    region_info = multi_cluster_refine(region_info)
     return region_info
        
 def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
@@ -198,11 +257,10 @@ def depth2CN(region_info, plot=True):
     region_info["CN"] = cns
     region_info["NDPS"] = ndps
     raw_cns = list(cns)
-    region_info = refine_cn(region_info, peaks,troughs)
+    region_info = refine_cn(region_info, peaks,troughs, bins, upeaks)
 
 
     if plot:
-        plot_cns(region_info["name"],troughs,peaks,bins,upeaks,raw_cns,dps,ndps)
         plot_cns(region_info["name"],troughs,peaks,bins,upeaks,region_info['CN'],dps,ndps)
     
     return region_info
@@ -251,9 +309,16 @@ chroms = sorted(set(x.split("_")[0] for x in normalized_depths.index))
 
 cy_writer = vcfwriter.get_writer(args.vcf,normalized_depths.columns, chroms)
 for region, row in normalized_depths.iterrows():
-    #if region != "1_143009_317718": continue #test case for merging
-    #if region != "1_267706_341907": continue #test case for zscore splitting
-    if region != "1_251124_404048": continue #test case for merging
+    interesting_regions = [
+        "1_143009_317718", #test case for merging
+        "1_267706_341907", #test case for zscore splitting
+        "1_251124_404048", #test case for merging
+        "1_121418_235524", #test case for 2.2
+        "1_104809_404048", #test case for 2.2
+        "1_104809_573868", #test case for 2.2
+
+    ]
+    if region not in interesting_regions: continue
 
     chrom,start,stop = region.split("_")
     start = int(start)
@@ -266,5 +331,5 @@ for region, row in normalized_depths.iterrows():
         "name": region
     }
 
-    region_info = depth2CN(region_info, plot=True)
+    region_info = depth2CN(region_info, plot=False)
     vcfwriter.write_variant(cy_writer, region_info)
