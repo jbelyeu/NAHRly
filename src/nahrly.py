@@ -318,7 +318,7 @@ for region, row in normalized_depths.iterrows():
         "1_104809_573868", #test case for 2.2
 
     ]
-    if region not in interesting_regions: continue
+    #if region not in interesting_regions: continue
 
     chrom,start,stop = region.split("_")
     start = int(start)
