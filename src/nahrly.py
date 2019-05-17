@@ -53,69 +53,72 @@ def one_cluster_refine(region_info):
     #return region_info
     #step 2.2: using the new groups from 2.1, check each of the values from the next group for better fit 
     #do this again if any points change cn
-#    found_cns = np.unique(cn)
-#    cns_changed = True
-#    while cns_changed:
-#        cns_changed = False
-#        for i in range(len(found_cns)-1):
-#            group1 = region_info['DP'][cn == found_cns[i]]
-#            group2 = region_info['DP'][cn == found_cns[i+1]]
-#            gp1_mean,gp1_std = np.mean(group1),np.std(group1)
-#            gp2_mean,gp2_std = np.mean(group2),np.std(group2)
-#
-#            zscores_gp1 = []
-#            zscores_gp2 = []
-#            for j,dp in enumerate(region_info['DP']):
-#                if cn[j] == found_cns[i+1]:
-#                    zscores_gp1.append((dp-gp1_mean) / gp1_std)
-#                    zscores_gp2.append((dp-gp2_mean) / gp2_std)
-#
-#                else:
-#                    zscores_gp1.append(np.inf)
-#                    zscores_gp2.append(np.inf)
-#            zscores_gp1 = np.array(zscores_gp1)
-#            zscores_gp2 = np.array(zscores_gp2)
-#            
-#            cn_counts = {}
-#            for found_cn in found_cns:
-#                cn_counts[found_cn] = len(cn[cn==found_cn])
-#            cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
-#            
-#            new_found_cns = np.unique(cn)
-#            if not np.array_equal(new_found_cns, found_cns):
-#                found_cns = new_found_cns
-#                cns_changed = True
-#            else:
-#                new_cn_counts = {}
-#                for found_cn in found_cns:
-#                    new_cn_counts[found_cn] = len(cn[cn==found_cn])
-#                if new_cn_counts != cn_counts:
-#                    cns_changed = True
-
     found_cns = np.unique(cn)
-    for i in range(len(found_cns)-1):
-        group1 = region_info['DP'][cn == found_cns[i]]
-        group2 = region_info['DP'][cn == found_cns[i+1]]
-        gp1_mean,gp1_std = np.mean(group1),np.std(group1)
-        gp2_mean,gp2_std = np.mean(group2),np.std(group2)
+    cns_changed = True
+    while cns_changed:
+        cns_changed = False
+        for i in range(len(found_cns)-1):
+            #size of found_cns changes so have to check
+            if len(found_cns) < i+2:
+                break
+            group1 = region_info['DP'][cn == found_cns[i]]
+            group2 = region_info['DP'][cn == found_cns[i+1]]
+            gp1_mean,gp1_std = np.mean(group1),np.std(group1)
+            gp2_mean,gp2_std = np.mean(group2),np.std(group2)
 
-        zscores_gp1 = []
-        zscores_gp2 = []
-        for j,dp in enumerate(region_info['DP']):
-            if cn[j] == found_cns[i+1]:
-                zscores_gp1.append((dp-gp1_mean) / gp1_std)
-                zscores_gp2.append((dp-gp2_mean) / gp2_std)
+            zscores_gp1 = []
+            zscores_gp2 = []
+            for j,dp in enumerate(region_info['DP']):
+                if cn[j] == found_cns[i+1]:
+                    zscores_gp1.append((dp-gp1_mean) / gp1_std)
+                    zscores_gp2.append((dp-gp2_mean) / gp2_std)
 
+                else:
+                    zscores_gp1.append(np.inf)
+                    zscores_gp2.append(np.inf)
+            zscores_gp1 = np.array(zscores_gp1)
+            zscores_gp2 = np.array(zscores_gp2)
+            
+            cn_counts = {}
+            for found_cn in found_cns:
+                cn_counts[found_cn] = len(cn[cn==found_cn])
+            cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
+            
+            new_found_cns = np.unique(cn)
+            if not np.array_equal(new_found_cns, found_cns):
+                found_cns = new_found_cns
+                cns_changed = True
             else:
-                zscores_gp1.append(np.inf)
-                zscores_gp2.append(np.inf)
-        zscores_gp1 = np.array(zscores_gp1)
-        zscores_gp2 = np.array(zscores_gp2)
-        
-        cn_counts = {}
-        for found_cn in found_cns:
-            cn_counts[found_cn] = len(cn[cn==found_cn])
-        cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
+                new_cn_counts = {}
+                for found_cn in found_cns:
+                    new_cn_counts[found_cn] = len(cn[cn==found_cn])
+                if new_cn_counts != cn_counts:
+                    cns_changed = True
+
+#    found_cns = np.unique(cn)
+#    for i in range(len(found_cns)-1):
+#        group1 = region_info['DP'][cn == found_cns[i]]
+#        group2 = region_info['DP'][cn == found_cns[i+1]]
+#        gp1_mean,gp1_std = np.mean(group1),np.std(group1)
+#        gp2_mean,gp2_std = np.mean(group2),np.std(group2)
+#
+#        zscores_gp1 = []
+#        zscores_gp2 = []
+#        for j,dp in enumerate(region_info['DP']):
+#            if cn[j] == found_cns[i+1]:
+#                zscores_gp1.append((dp-gp1_mean) / gp1_std)
+#                zscores_gp2.append((dp-gp2_mean) / gp2_std)
+#
+#            else:
+#                zscores_gp1.append(np.inf)
+#                zscores_gp2.append(np.inf)
+#        zscores_gp1 = np.array(zscores_gp1)
+#        zscores_gp2 = np.array(zscores_gp2)
+#        
+#        cn_counts = {}
+#        for found_cn in found_cns:
+#            cn_counts[found_cn] = len(cn[cn==found_cn])
+#        cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
 
 
     return region_info
@@ -160,7 +163,7 @@ def merge_cns(region_info, mergeable_cns):
     return region_info
 
 
-def refine_cn(region_info, peaks, troughs, bins, upeaks):
+def refine_cn(region_info):
     #step 1. move CN=1 samples that have been misclassified to CN=0 
     cn = region_info["CN"]
     cn[(cn == 0) & (region_info["DP"] > 0.4)] = 1
@@ -196,9 +199,34 @@ def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
 
     ax = sns.swarmplot(x="dp", y=['']*len(df), data=df, ax=axes[1], hue="cn")
     plt.show()
+
+def plot_simple_cns(name,cns,dps):
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 8))
+    fig.suptitle(name)
+    colors = sns.color_palette()
+
+    df = pd.DataFrame({"dp":dps, "cn": cns})
+    cs = np.array([colors[min(len(colors)-1, d)] for d in cns])
+    cs = cs[np.argsort(dps)]
+
+    ax = sns.swarmplot(x="dp", y=['']*len(df), data=df, ax=axes[1], hue="cn")
+    plt.show()
  
 
-def depth2CN(region_info, plot=True):
+def depth2CN(region_info, method="peaks", plot=True):
+    if method == "GMM":
+        import emgaussian
+        region_info = emgaussian.EMCopyNumber(region_info)
+        region_info = refine_cn(region_info)
+        if plot:
+            plot_simple_cns(region_info["name"],region_info['CN'],region_info['DP'])
+
+        return region_info
+    elif method == "PMM":
+        import empoisson
+        return empoisson.EMCopyNumber(region_info)
+
     dps = region_info["DP"]
     ndps = 2 * dps / np.maximum(0.4, np.median(dps))
     try:
@@ -330,6 +358,7 @@ for region, row in normalized_depths.iterrows():
         "DP": row.values,
         "name": region
     }
-
-    region_info = depth2CN(region_info, plot=False)
+    
+    methods = ["peaks","GMM","PMM"]
+    region_info = depth2CN(region_info, method=methods[1], plot=False)
     vcfwriter.write_variant(cy_writer, region_info)
