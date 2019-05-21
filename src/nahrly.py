@@ -63,6 +63,7 @@ def one_cluster_refine(region_info):
                 break
             group1 = region_info['DP'][cn == found_cns[i]]
             group2 = region_info['DP'][cn == found_cns[i+1]]
+            #TODO special case for len==1
             gp1_mean,gp1_std = np.mean(group1),np.std(group1)
             gp2_mean,gp2_std = np.mean(group2),np.std(group2)
 
@@ -82,7 +83,9 @@ def one_cluster_refine(region_info):
             cn_counts = {}
             for found_cn in found_cns:
                 cn_counts[found_cn] = len(cn[cn==found_cn])
-            cn[np.absolute(zscores_gp1) < np.absolute(zscores_gp2)] -= 1
+
+            #if the point being tested falls closer by a standarddev to the other cluster, move it
+            cn[np.absolute(zscores_gp1) < (np.absolute(zscores_gp2)-1.0)] -= 1
             
             new_found_cns = np.unique(cn)
             if not np.array_equal(new_found_cns, found_cns):
@@ -164,7 +167,9 @@ def merge_cns(region_info, mergeable_cns):
 
 
 def refine_cn(region_info):
+    #return region_info
     #step 1. move CN=1 samples that have been misclassified to CN=0 
+
     cn = region_info["CN"]
     cn[(cn == 0) & (region_info["DP"] > 0.4)] = 1
 
@@ -173,14 +178,13 @@ def refine_cn(region_info):
         region_info = one_cluster_refine(region_info)
 
     # NOTE: returning early because step 3 makes evaluation much worse.
-    #return region_info
-
+    return region_info
 
     #step 3: if two consecutive peaks don't have different means, merge them
     region_info = multi_cluster_refine(region_info)
     return region_info
        
-def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
+def plot_cns(name,troughs,utroughs,peaks,bins,upeaks,cns,dps,ndps):
     troughs = troughs[:-1]
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 8))
@@ -188,17 +192,20 @@ def plot_cns(name,troughs,peaks,bins,upeaks,cns,dps,ndps):
     axes[0].plot(bins)
     colors = sns.color_palette()
     axes[0].plot(peaks, bins[peaks], "x", color=colors[5])
-    axes[0].plot(troughs, bins[troughs], "x", color=colors[4])
+    axes[0].plot(troughs, bins[troughs], "o", color=colors[4])
 
     for u in upeaks:
-        axes[1].axvline(u, color=colors[5])
+        axes[1].axvline(u, color=colors[5], linewidth=2)
+    #for u in utroughs:
+    #    axes[1].axvline(u, color=colors[5], linewidth=1)
 
     df = pd.DataFrame({"dp":ndps, "cn": cns})
     cs = np.array([colors[min(len(colors)-1, d)] for d in cns])
     cs = cs[np.argsort(dps)]
 
     ax = sns.swarmplot(x="dp", y=['']*len(df), data=df, ax=axes[1], hue="cn")
-    plt.show()
+    #plt.show()
+    plt.savefig(os.path.join("/Users/jon/Desktop/nahrpics",name+".png"))
 
 def plot_simple_cns(name,cns,dps):
 
@@ -213,6 +220,8 @@ def plot_simple_cns(name,cns,dps):
     ax = sns.swarmplot(x="dp", y=['']*len(df), data=df, ax=axes[1], hue="cn")
     plt.show()
  
+def cn_probabilities(region_info):
+    return region_info
 
 def depth2CN(region_info, method="peaks", plot=True):
     if method == "GMM":
@@ -239,16 +248,28 @@ def depth2CN(region_info, method="peaks", plot=True):
     # NOTE that we could experiment with larger bins at the extremes to catch
     # rare events. or handle that post-hoc
     bins = np.zeros(100)
-    large_scaler = 22.0
+    #large_scaler = 22.0
+    #TODO tune this scaler
+    large_scaler = 12.0
+    large_scaler = 10.0
 
     n_samples = len(ndps)
-    scale_depth = np.minimum(bins.size - 1, np.round(ndps * (large_scaler if n_samples > 72 else 12)).astype(int))
+    scale_depth = np.minimum(bins.size - 1, np.round(ndps * (large_scaler if n_samples > 72 else 12.0)).astype(int))
 
     bins = np.bincount(scale_depth)
+
+    #peak finding can't find peaks at the ends, so adding zero bins to both ends
+    bins = np.append(bins,0)
+    bins = np.insert(bins,0,0)
+
     # TODO: prominence of 3 means 3 samples must be in same bin, so won't find
     # de novos. figure how to deal with that post-hoc?
-    peaks, _ = find_peaks(bins, distance=6, prominence=3, rel_height=0.7)
+    peaks, peak_info = find_peaks(bins, distance=6, width=0)
+
+    #upeaks (peaks in depth space) are equal to the middle of the peaks divided by the scalar
+    upeaks = (peaks - (peak_info['widths']/2.0)) / (large_scaler if n_samples > 72 else 12.0)
     upeaks = peaks / (large_scaler if n_samples > 72 else 12.0)
+
     if len(upeaks) == 0:
         upeaks = np.array([ndps[imed]])
         peaks = np.array([2])
@@ -263,21 +284,20 @@ def depth2CN(region_info, method="peaks", plot=True):
         min_mean = int(0.5 + min_mean.mean())
         troughs.append(start + min_mean) #np.argmin(bins[start:stop]))
     troughs.append(len(bins))
-
     utroughs = np.array(troughs) / (large_scaler if n_samples > 72 else 12)
-
-
     cns = np.zeros(dps.shape[0], dtype=int)
 
-    # this was just using naive distance (and finding closest peak)
-    # cns = distance_matrix(ndps.reshape((ndps.shape[0], 1)), upeaks.reshape((upeaks.shape[0], 1))).argmin(axis=1)
-    # the code blow splits by trough instead.
-
+    # the code below splits by trough instead.
     for i, p in enumerate(upeaks):
         if i == 0:
+            #set to cn=0 if the depth is less than the first trough
             cns[ndps <= utroughs[0]] = i
-        else:
+        elif i < len(upeaks)-1:
+            #set to cn=i where the depth is greater than the prev trough and less than next trough
             cns[(ndps >= utroughs[i-1]) & (ndps <= utroughs[i])] = i
+        else:
+            #set to i if the depth is greater than the last trough 
+            cns[(ndps >= utroughs[i-1]) ] = i
 
     # re-scale so that CN2 is the value assigned to the median sample.
     cns += (2 - cns[imed])
@@ -285,11 +305,12 @@ def depth2CN(region_info, method="peaks", plot=True):
     region_info["CN"] = cns
     region_info["NDPS"] = ndps
     raw_cns = list(cns)
-    region_info = refine_cn(region_info, peaks,troughs, bins, upeaks)
+    region_info = refine_cn(region_info)
+    #region_info = cn_probabilities(region_info)
 
 
     if plot:
-        plot_cns(region_info["name"],troughs,peaks,bins,upeaks,region_info['CN'],dps,ndps)
+        plot_cns(region_info["name"],troughs,utroughs,peaks,bins,upeaks,region_info['CN'],dps,ndps)
     
     return region_info
 
@@ -331,7 +352,7 @@ depths_matrix = depths_matrix.loc[(depths_matrix > 0).any(axis='columns')]
 #normalize internally by median * 2 (assuming most common value is CN=2)
 normalized_depths = depths_matrix
 normalized_depths = normalized_depths / normalized_depths.median(axis='rows') * 2
-normalized_depths.to_csv("internal_norm_depths2.csv")
+variances = normalized_depths.var(axis='rows')
 
 chroms = sorted(set(x.split("_")[0] for x in normalized_depths.index))
 
@@ -344,6 +365,7 @@ for region, row in normalized_depths.iterrows():
         "1_121418_235524", #test case for 2.2
         "1_104809_404048", #test case for 2.2
         "1_104809_573868", #test case for 2.2
+        "1_13005538_13005884",
 
     ]
     #if region not in interesting_regions: continue
