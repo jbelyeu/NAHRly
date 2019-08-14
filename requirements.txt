@@ -1,8 +1,7 @@
-statistics
+cyvcf2
 pandas
 numpy
 matplotlib
 seaborn
 scipy
 scikit-learn
-pysam

@@ -1,0 +1,15 @@
+.v-application, .v-application .headline {
+    font-family: 'Google Sans', sans-serif !important;
+}
+
+.flex-container {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-around;
+}
+
+.v-card {
+    margin: 10px;
+}
