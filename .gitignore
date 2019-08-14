@@ -1,1 +1,6 @@
+.DS_Store
+.idea
+data/nahrly.vcf
+visualization/.idea
+
 __test.vcf
