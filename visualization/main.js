@@ -13,8 +13,10 @@ new Vue({
     return {
       regions: regions,
       names: Object.keys(regions),
-      name: Object.keys(regions)[0],
-      colors: ['red', 'green', 'blue', 'magenta', 'cyan'],
+      name: Object.keys(regions)[3],
+      unique_colors: ['red', 'green', 'blue', 'magenta', 'cyan'],
+      histogram_inferred_copy_number: 'all',
+      bayes_inferred_copy_number: 'all',
       desserts: [
         {
           name: 'Frozen Yogurt',
@@ -64,32 +66,73 @@ new Vue({
     region () {
       return this.regions[this.name]
     },
-    number_samples () {
-      return this.region['normalized read depth'].length
+    xs () {
+      return this.region['samples'].map(sample => sample['normalized read depth'])
+    },
+    min_xs () {
+      return Math.min(...this.xs)
+    },
+    max_xs () {
+      return Math.max(...this.xs)
+    },
+    filter () {
+      return (
+        this.histogram_inferred_copy_number !== 'all'
+        &&
+        this.bayes_inferred_copy_number !== 'all'
+      )
+    },
+    region_to_show () {
+      if (this.filter) {
+        // https://flaviocopes.com/how-to-clone-javascript-object/
+        let region_to_show = _.cloneDeep(this.region)
+        region_to_show['samples'] = this.region['samples'].filter(sample => (
+            sample['histogram-inferred copy number'] === this.histogram_inferred_copy_number
+            &&
+            sample['bayes-inferred copy number'] === this.bayes_inferred_copy_number
+          )
+        )
+        return region_to_show
+      } else {
+        return this.region
+      }
     },
     // plotly only supports a limited number of html tags, e.g., "<br>"
-    hover_text () {
-      return this.region['inferred copy number'].map((e, i) => {
-        const first_line = 'inferred copy number: ' + e + '<br>'
-        const second_line = 'possible copy numbers: ' + this.region['possible copy numbers'] + '<br>'
-        const third_line = ('probabilities of possible copy numbers: ' +
-          this.region['probabilities of possible copy numbers'][i].map(value => value.toFixed(2)))
-        return first_line + second_line + third_line
+    hover_texts_to_show () {
+      return this.region_to_show['samples'].map((sample) => {
+        const first_line = 'histogram-inferred copy number: ' + sample['histogram-inferred copy number'] + '<br>'
+        const second_line = 'possible copy numbers: ' + this.region_to_show['possible copy numbers'] + '<br>'
+        const third_line = (
+          'probabilities of possible copy numbers: ' +
+          sample['probabilities of possible copy numbers'].map(value => value.toFixed(2)) +
+          '<br>'
+        )
+        const fourth_line = 'bayes-inferred copy number: ' + sample['bayes-inferred copy number']
+        return first_line + second_line + third_line + fourth_line
       })
+    },
+    xs_to_show () {
+      return this.region_to_show['samples'].map(sample => sample['normalized read depth'])
+    },
+    ys_to_show () {
+      return this.region_to_show['samples'].map(sample => sample['random number'])
+    },
+    colors_to_show () {
+      return this.region_to_show['samples'].map(sample => this.unique_colors[sample['histogram-inferred copy number'] - 1])
     },
     data () {
       return {
         traces: [
           {
-            x: this.region['normalized read depth'],
-            y: Array.from({ length: this.number_samples }, () => Math.random()),
+            x: this.xs_to_show,
+            y: this.ys_to_show,
             mode: 'markers',
             type: 'scatter',
             marker: {
               size: 12,
-              color: this.region['inferred copy number'].map(value => this.colors[value - 1])
+              color: this.colors_to_show
             },
-            text: this.hover_text,
+            text: this.hover_texts_to_show,
             hoverinfo: 'text'
           }
         ],
@@ -98,13 +141,15 @@ new Vue({
             family: 'Google Sans, sans-serif',
           },
           xaxis: {
-            title: 'normalized read depth'
+            title: 'normalized read depth',
+            range: [this.min_xs, this.max_xs]
           },
           // https://codepen.io/plotly/pen/KpLVzv ...
           yaxis: {
             showgrid: false,
             zeroline: false,
-            showticklabels: false
+            showticklabels: false,
+            range: [-0.2, 1.2]
           },
           hovermode: 'closest',
           hoverlabel: {
@@ -115,11 +160,16 @@ new Vue({
     }
   },
   methods: {
-    print (item) {
-      console.log('item is ', item.name)
+    mouseenter (histogram_inferred_copy_number, bayes_inferred_copy_number) {
+      this.histogram_inferred_copy_number = histogram_inferred_copy_number
+      this.bayes_inferred_copy_number = bayes_inferred_copy_number
+    },
+    mouseleave () {
+      this.histogram_inferred_copy_number = 'all'
+      this.bayes_inferred_copy_number = 'all'
     },
   },
   mounted () {
-    console.log(this.regions)
+    console.log(this.region)
   },
 })

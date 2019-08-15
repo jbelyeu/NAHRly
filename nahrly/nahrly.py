@@ -21,6 +21,8 @@ from scipy.spatial import distance_matrix
 from scipy.signal import find_peaks, find_peaks_cwt
 import seaborn as sns
 
+# for data visualization
+import random
 
 #arg parsing
 ######################################################################################################################
@@ -157,14 +159,14 @@ def depth2CN(region_info, plot=True):
             #set to cn=i where the depth is greater than the prev trough and less than next trough
             cns[(ndps >= utroughs[i-1]) & (ndps <= utroughs[i])] = i
         else:
-            #set to i if the depth is greater than the last trough 
+            #set to i if the depth is greater than the last trough
             cns[(ndps >= utroughs[i-1]) ] = i
 
     # re-scale so that CN2 is the value assigned to the mode CN
     (cn_vals,cn_counts) = np.unique(cns,return_counts=True)
     cn_mode = cn_vals[cn_counts == max(cn_counts)]
-    
-    
+
+
     cns += (2 - cn_mode)
     #if the lowest CN is greater than 0 but depth is very close to 0, the mode is probably at CN=1 instead of CN=2, so scale down
     lowest_cn = min(cns)
@@ -177,7 +179,7 @@ def depth2CN(region_info, plot=True):
 
     if plot and len(np.unique(region_info['CN'])) > 1:
         plot_cns(region_info["name"],troughs,utroughs,peaks,bins,upeaks,cns,dps,ndps, region_info['RAWDP'])
-    
+
     return region_info
 
 # https://scikit-learn.org/stable/modules/naive_bayes.html#gaussian-naive-bayes
@@ -188,7 +190,9 @@ def compute_class_probabilities(region_info):
     X = region_info['DP']
     X = X[..., np.newaxis]
     y = region_info['CN']
-    region_info['class_probabilities'] = model.fit(X, y).predict_proba(X)
+    model.fit(X, y)
+    region_info['class_probabilities'] = model.predict_proba(X)
+    region_info['bayes_inferred_copy_number'] = model.predict(X)
     region_info['class_labels'] = model.classes_
     return region_info
 
@@ -248,11 +252,11 @@ for region, row in normalized_depths.iterrows():
         "1_104122235_104159277",
     ]
     #if region not in interesting_regions: continue
-    
+
     chrom,start,stop = region.split("_")
     start = int(start)
     stop = int(stop)
-    
+
     region_info = {
         "chrom": chrom,
         "start": start,
@@ -273,10 +277,27 @@ for region, row in normalized_depths.iterrows():
         'chromosome': region_info['chrom'],
         'start': region_info['start'],
         'stop': region_info['stop'],
-        'normalized read depth': region_info['DP'].tolist(),
-        'inferred copy number': region_info['CN'].tolist(),
         'possible copy numbers': region_info['class_labels'].tolist(),
-        'probabilities of possible copy numbers': region_info['class_probabilities'].tolist()
+        'samples': [
+            {
+                'normalized read depth': float(normalized_read_depth),
+                'random number': random.random(),
+                'histogram-inferred copy number': int(histogram_inferred_copy_number),
+                'probabilities of possible copy numbers': class_probabilities.tolist(),
+                'bayes-inferred copy number': int(bayes_inferred_copy_number)
+            }
+            for (
+                normalized_read_depth,
+                histogram_inferred_copy_number,
+                class_probabilities,
+                bayes_inferred_copy_number
+            ) in zip (
+                region_info['DP'],
+                region_info['CN'],
+                region_info['class_probabilities'],
+                region_info['bayes_inferred_copy_number']
+            )
+        ]
     }
 
     vcfwriter.write_variant(cy_writer, region_info)
