@@ -1,3 +1,6 @@
+// TODO: factor out code relating to chart into chart.js
+// TODO: factor out code relating to table into new file called table.js
+
 // You can only use import and export statements inside modules; not regular scripts.
 // In some module systems, you can omit the file extension and the dot (e.g. '/modules/square').
 // This doesn't work in native JavaScript modules.
@@ -17,48 +20,9 @@ new Vue({
       unique_colors: ['red', 'green', 'blue', 'magenta', 'cyan'],
       histogram_inferred_copy_number: 'all',
       bayes_inferred_copy_number: 'all',
-      desserts: [
-        {
-          name: 'Frozen Yogurt',
-          calories: 159,
-        },
-        {
-          name: 'Ice cream sandwich',
-          calories: 237,
-        },
-        {
-          name: 'Eclair',
-          calories: 262,
-        },
-        {
-          name: 'Cupcake',
-          calories: 305,
-        },
-        {
-          name: 'Gingerbread',
-          calories: 356,
-        },
-        {
-          name: 'Jelly bean',
-          calories: 375,
-        },
-        {
-          name: 'Lollipop',
-          calories: 392,
-        },
-        {
-          name: 'Honeycomb',
-          calories: 408,
-        },
-        {
-          name: 'Donut',
-          calories: 452,
-        },
-        {
-          name: 'KitKat',
-          calories: 518,
-        },
-      ],
+      tippy: null,
+      tippy_timer: null,
+      wait: 1000
     }
   },
   // use regular functions, not arrow functions, when invoking "this" : https://michaelnthiessen.com/this-is-undefined/
@@ -75,6 +39,12 @@ new Vue({
     max_xs () {
       return Math.max(...this.xs)
     },
+    range_xs () {
+      return this.max_xs - this.min_xs
+    },
+    possible_copy_numbers () {
+      return this.region['possible copy numbers']
+    },
     filter () {
       return (
         this.histogram_inferred_copy_number !== 'all'
@@ -86,11 +56,9 @@ new Vue({
       if (this.filter) {
         // https://flaviocopes.com/how-to-clone-javascript-object/
         let region_to_show = _.cloneDeep(this.region)
-        region_to_show['samples'] = this.region['samples'].filter(sample => (
-            sample['histogram-inferred copy number'] === this.histogram_inferred_copy_number
-            &&
-            sample['bayes-inferred copy number'] === this.bayes_inferred_copy_number
-          )
+        region_to_show['samples'] = this.samples(
+          this.histogram_inferred_copy_number,
+          this.bayes_inferred_copy_number
         )
         return region_to_show
       } else {
@@ -99,7 +67,7 @@ new Vue({
     },
     // plotly only supports a limited number of html tags, e.g., "<br>"
     hover_texts_to_show () {
-      return this.region_to_show['samples'].map((sample) => {
+      return this.region_to_show['samples'].map(sample => {
         const first_line = 'histogram-inferred copy number: ' + sample['histogram-inferred copy number'] + '<br>'
         const second_line = 'possible copy numbers: ' + this.region_to_show['possible copy numbers'] + '<br>'
         const third_line = (
@@ -118,7 +86,8 @@ new Vue({
       return this.region_to_show['samples'].map(sample => sample['random number'])
     },
     colors_to_show () {
-      return this.region_to_show['samples'].map(sample => this.unique_colors[sample['histogram-inferred copy number'] - 1])
+      return this.region_to_show['samples'].map(sample =>
+        this.unique_colors[sample['histogram-inferred copy number'] - 1])
     },
     data () {
       return {
@@ -142,7 +111,7 @@ new Vue({
           },
           xaxis: {
             title: 'normalized read depth',
-            range: [this.min_xs, this.max_xs]
+            range: [this.min_xs - 0.1*this.range_xs, this.max_xs + 0.1*this.range_xs]
           },
           // https://codepen.io/plotly/pen/KpLVzv ...
           yaxis: {
@@ -160,6 +129,17 @@ new Vue({
     }
   },
   methods: {
+    samples (histogram_inferred_copy_number, bayes_inferred_copy_number) {
+      return this.region['samples'].filter(sample => (
+          sample['histogram-inferred copy number'] === histogram_inferred_copy_number
+          &&
+          sample['bayes-inferred copy number'] === bayes_inferred_copy_number
+        )
+      )
+    },
+    number_samples (histogram_inferred_copy_number, bayes_inferred_copy_number) {
+      return this.samples(histogram_inferred_copy_number, bayes_inferred_copy_number).length
+    },
     mouseenter (histogram_inferred_copy_number, bayes_inferred_copy_number) {
       this.histogram_inferred_copy_number = histogram_inferred_copy_number
       this.bayes_inferred_copy_number = bayes_inferred_copy_number
@@ -168,8 +148,25 @@ new Vue({
       this.histogram_inferred_copy_number = 'all'
       this.bayes_inferred_copy_number = 'all'
     },
+    show_tippy () {
+      this.tippy = tippy(this.$refs.table.$el, {
+        content: 'Hover over cells of table to highlight samples in scatter plot below',
+        placement: 'left',
+        arrow: true,
+        theme: 'google',
+        trigger: 'manual',
+        hideOnClick: true
+      })
+      this.tippy.show()
+    }
+
   },
   mounted () {
-    console.log(this.region)
+    this.tippy_timer = setTimeout(this.show_tippy, this.wait)
   },
+  beforeDestroy () {
+    clearTimeout(this.tippy_timer)
+    this.tippy.destroy(true)
+  }
+
 })

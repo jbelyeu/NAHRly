@@ -14,6 +14,4 @@ pip install -r requirements.txt
 
 Generate data using `./nahrly.sh`.
 
-Visualize data using `python serve.py` 
-or by visiting: 
-https://petermchale.github.io/NAHRly/
+Visualize data using `python serve.py`. 

@@ -1,3 +1,7 @@
+<!--
+TODO: factor out code relating to table into new file called table.js
+-->
+
 <html>
 <head>
   <title>NAHRly visualization</title>
@@ -5,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css?family=Google+Sans" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font@3.x/css/materialdesignicons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="./visualization/style.css">
+  <link href="./visualization/style.css" rel="stylesheet">
 
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 </head>
@@ -15,88 +19,85 @@
   <v-app>
     <v-content style="padding: 20px;">
 
-      <div class="flex-container">
+      <v-card raised max-width="600px">
+        <v-card-title>
+          Inferring copy number of NAHR-associated variants
+        </v-card-title>
+        <v-card-text>
+          <p>
+            NAHRly normalizes read depth in a given genomic region across multiple samples
+            and then uses the troughs of the histogram of normalized read depths
+            to threshold them,
+            thereby clustering the samples into copy-number classes.
+            (This approach is borrowed from the field of
+            <a href="https://en.wikipedia.org/wiki/Image_segmentation#Histogram-based_methods">
+              image segmentation
+            </a>
+            .)
+          </p>
+          <p>
+            Using the labels assigned to samples by the histogram-based method outlined above,
+            <a href="https://scikit-learn.org/stable/modules/naive_bayes.html#gaussian-naive-bayes">
+              Naive Bayes
+            </a>
+            was used to compute
+          <ul>
+            <li>confidence in the histogram-based inference of copy numbers</li>
+            <li>re-predict copy numbers</li>
+          </ul>
+          </p>
+          <p>
+            This dashboard visualizes the Naive-Bayes confidence of inferred copy numbers and compares
+            the histogram-based and Naive-Bayes-based predicted copy numbers.
+          </p>
+        </v-card-text>
+      </v-card>
 
-        <v-card raised max-width="400px">
-          <v-card-title>
-            Inferring copy number of NAHR-associated variants
-          </v-card-title>
-          <v-card-text>
-            <p>
-              NAHRly normalizes read depth in a given genomic region across multiple samples
-              and then uses the troughs of the histogram to threshold the normalized read depth,
-              thereby clustering the samples into copy-number classes.
-              (This approach is borrowed from the field of
-              <a href="https://en.wikipedia.org/wiki/Image_segmentation#Histogram-based_methods">
-                image segmentation
-              </a>
-              .)
-            </p>
-            <p>
-              Next,
-              <a href="https://scikit-learn.org/stable/modules/naive_bayes.html#gaussian-naive-bayes">
-                Naive Bayes
-              </a>
-              was used to compute
-            <ul>
-              <li>confidence in the histogram-shape-based inference of copy numbers</li>
-              <li>re-predict copy numbers</li>
-            </ul>
-            </p>
-            <p>
-              This page visualizes the Naive-Bayes confidence of inferred copy numbers and compares
-              the histogram-based and Naive-Bayes-based predicted copy numbers.
-            </p>
-          </v-card-text>
-          <v-card-actions>
+      <v-card raised style="padding: 10px;">
+        <div class="flex-container">
+
+          <div style="padding: 10px; width: 300px;">
             <v-select :items="names"
                       v-model="name"
                       label="NAHR Regions">
             </v-select>
-          </v-card-actions>
-        </v-card>
+          </div>
 
-        <v-card raised max-width="400px">
-          <v-simple-table>
-            <!-- https://github.com/vuetifyjs/vuetify/issues/7169 -->
-            <template v-slot:default>
-              <thead>
-              <tr>
-                <th class="text-left">&nbsp</th>
-                <th class="text-left">Name</th>
-                <th class="text-left">Calories</th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr>
-                <td></td>
-                <th> 1</th>
-                <th> 2</th>
-              </tr>
-              <tr v-for="item in desserts" :key="item.name">
-                <th> 1</th>
-                <td @mouseenter="mouseenter(1, 2)"
-                    @mouseleave="mouseleave"> {{ item.name }}</td>
-                <td> {{ item.calories }}</td>
-              </tr>
-              </tbody>
-            </template>
-          </v-simple-table>
-        </v-card>
+          <v-card ref="table" raised>
+            <v-card-text >
+              <div class="title black--text text-center">
+                Breakdown of sample number
+              </div>
+              <div class="grid-container">
+                <div></div>
+                <div style="padding-bottom: 10px;"
+                     class="text-center grey--text">
+                  Bayes-inferred<br>copy number
+                </div>
+                <div style="padding-right: 10px;" class="table-row-label grey--text">
+                  <div> Histogram-inferred<br>copy number</div>
+                </div>
+                <table>
+                  <tbody>
+                  <tr v-for="histogram_inferred_copy_number in possible_copy_numbers">
+                    <td v-for="bayes_inferred_copy_number in possible_copy_numbers"
+                        class="text-center"
+                        style="width: 40px; height: 40px;"
+                        @mouseenter="mouseenter(histogram_inferred_copy_number, bayes_inferred_copy_number)"
+                        @mouseleave="mouseleave">
+                      {{ number_samples(histogram_inferred_copy_number, bayes_inferred_copy_number) }}
+                    </td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </v-card-text>
+          </v-card>
+        </div>
 
-      </div>
-
-      {{ histogram_inferred_copy_number }}
-
-      {{ bayes_inferred_copy_number }}
-
-      <v-card raised>
-        <v-card-text>
-          Hover to show confidence in inferred copy number
-        </v-card-text>
         <chart :data="data"></chart>
-      </v-card>
 
+      </v-card>
     </v-content>
   </v-app>
 </div>
@@ -105,6 +106,8 @@
 <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.15/lodash.min.js"></script>
+<script src="https://unpkg.com/popper.js@1"></script>
+<script src="https://unpkg.com/tippy.js@4"></script>
 
 <!-- https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules -->
 <script type="module" src="visualization/main.js"></script>
