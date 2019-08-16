@@ -64,7 +64,7 @@ TODO: factor out code relating to table into new file called table.js
           </div>
 
           <v-card ref="table" raised>
-            <v-card-text >
+            <v-card-text>
               <div class="title black--text text-center">
                 Breakdown of sample number
               </div>
@@ -74,14 +74,23 @@ TODO: factor out code relating to table into new file called table.js
                   Bayes-inferred<br>copy number
                 </div>
                 <div class="table-row-label grey--text">
-                  <div> Histogram-<br>inferred<br>copy<br>number </div>
+                  <div> Histogram-<br>inferred<br>copy<br>number</div>
                 </div>
                 <table>
                   <tbody>
-                  <tr v-for="histogram_inferred_copy_number in possible_copy_numbers">
+                  <tr>
+                    <td class="table-column-left"></td>
                     <td v-for="bayes_inferred_copy_number in possible_copy_numbers"
-                        class="text-center"
-                        style="width: 40px; height: 40px;"
+                        class="text-center grey--text table-column-other">
+                      {{ bayes_inferred_copy_number }}
+                    </td>
+                  </tr>
+                  <tr v-for="histogram_inferred_copy_number in possible_copy_numbers">
+                    <td class="grey--text table-column-left">
+                      {{ histogram_inferred_copy_number }}
+                    </td>
+                    <td v-for="bayes_inferred_copy_number in possible_copy_numbers"
+                        class="text-center table-column-other hoverable"
                         @mouseenter="mouseenter(histogram_inferred_copy_number, bayes_inferred_copy_number)"
                         @mouseleave="mouseleave">
                       {{ number_samples(histogram_inferred_copy_number, bayes_inferred_copy_number) }}

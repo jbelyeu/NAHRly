@@ -2,6 +2,10 @@
     font-family: 'Google Sans', sans-serif !important;
 }
 
+.v-card {
+    margin: 10px;
+}
+
 .flex-container {
     display: flex;
     flex-direction: row;
@@ -23,11 +27,17 @@
     align-items: center;
 }
 
-.v-card {
-    margin: 10px;
+.table-column-left {
+    width: 20px;
+    height: 30px;
 }
 
-td:hover {
+.table-column-other {
+    width: 40px;
+    height: 30px;
+}
+
+td.hoverable:hover {
     background-color: #eee;
 }
 

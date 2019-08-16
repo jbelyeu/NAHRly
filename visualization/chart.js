@@ -40,6 +40,7 @@ Vue.component('chart', {
   beforeDestroy () {
     clearTimeout(this.tippy_timer)
     this.tippy.destroy(true)
+    Plotly.purge(this.$refs.chart)
   }
 })
 
