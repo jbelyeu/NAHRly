@@ -195,6 +195,14 @@ def compute_class_probabilities(region_info):
     region_info['bayes_inferred_copy_number'] = model.predict(X)
     region_info['class_labels'] = model.classes_
     return region_info
+# TODO:
+# Down-weigh bad samples with variable coverage when computing p(x) and p(z), 
+# where x is normalized read depth and z is copy number. 
+# Genome Strip seems to do this: 
+# “The model incorporates sample-specific variance terms 
+# to model the variation in sequencing depth between samples” 
+# https://www.nature.com/articles/ng.3200.pdf
+
 
 ######################################################################################################################
 

@@ -16,7 +16,7 @@ new Vue({
     return {
       regions: regions,
       names: Object.keys(regions),
-      name: Object.keys(regions)[3],
+      name: Object.keys(regions)[2],
       unique_colors: ['red', 'green', 'blue', 'magenta', 'cyan'],
       histogram_inferred_copy_number: 'all',
       bayes_inferred_copy_number: 'all',
