@@ -1,1 +1,1 @@
-python nahrly/nahrly.py data/nahrly_medians -d data/betwixt_unique_superdups.bed -v data/nahrly.vcf --visualization data/sample_of_regions.js
+python src/nahrly.py data/nahrly_medians -d data/betwixt_unique_superdups.bed -v data/nahrly.vcf --visualization data/sample_of_regions.js
